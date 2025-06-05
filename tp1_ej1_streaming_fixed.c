@@ -331,7 +331,7 @@ void cargar_formularios() {
         semop(semid, &op, 1);
 
         printf(">> [CARGAR] Formulario ID %d producido en buf_cv.\n", f.id);
-        sleep(1);  /* para poder visualizar la concurrencia */
+        sleep(6);  /* para poder visualizar la concurrencia */
     }
 
     /* 3) Enviar sentinel (id = -1) */
@@ -554,17 +554,17 @@ void clasificar_formularios() {
         }
 
         /* Clasificar */
-        if (strstr(f.descripcion, "reclamo") != NULL 
+        if (strstr(f.descripcion, "reclamo") != NULL
          || strstr(f.descripcion, "Reclamo") != NULL) {
             strncpy(f.tipoForm, "Reclamo", sizeof(f.tipoForm)-1);
             f.tipoForm[sizeof(f.tipoForm)-1] = '\0';
         }
-        else if (strstr(f.descripcion, "pedido") != NULL 
+        else if (strstr(f.descripcion, "pedido") != NULL
               || strstr(f.descripcion, "Pedido") != NULL) {
             strncpy(f.tipoForm, "Pedido", sizeof(f.tipoForm)-1);
             f.tipoForm[sizeof(f.tipoForm)-1] = '\0';
         }
-        else if (strstr(f.descripcion, "consulta") != NULL 
+        else if (strstr(f.descripcion, "consulta") != NULL
               || strstr(f.descripcion, "Consulta") != NULL) {
             strncpy(f.tipoForm, "Consulta", sizeof(f.tipoForm)-1);
             f.tipoForm[sizeof(f.tipoForm)-1] = '\0';
