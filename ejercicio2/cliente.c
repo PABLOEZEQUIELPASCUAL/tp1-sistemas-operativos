@@ -3,10 +3,10 @@
  *
  * Cliente para el Ahorcado:
  * - Se conecta al servidor, recibe el estado inicial y maneja TRY:<letra>, QUIT, HELP.
- * - Tras cada partida (GAMEOVER), pregunta “¿Querés jugar otra? (S/N)”.
- *   Si responde “S”, envía “PLAY\n” y empieza nueva partida sin reconectar.
- *   Si responde “N”, envía “QUIT\n” y finaliza.
- * - Ignora mensajes diferentes a “STATE:”, “GAMEOVER:…”, o “ERROR:…”.
+ * - Tras cada partida (GAMEOVER), pregunta "¿Querés jugar otra? (S/N)"
+ *   Si responde "S", envía "PLAYSe perdió la conexión con el servidor. El juego se cerrará.\n" y empieza nueva partida sin reconectar.
+ *   Si responde "N", envía "QUIT\n" y finaliza.
+ * - Ignora mensajes diferentes a "STATE:..." o "GAMEOVER:...".
  * - Maneja desconexión inesperada del servidor (SIGPIPE ignorado).
  *
  * Autor: Tú mismo
@@ -43,7 +43,7 @@ void mostrar_ayuda() {
     printf("========================\n\n");
 }
 
-// Procesa línea “STATE:palabra|intentos|letras”
+// Procesa línea "STATE:palabra|intentos|letras"
 void procesar_estado(const char *estado) {
     char palabra[MAX_BUFFER] = {0};
     int intentos = 0;
@@ -130,12 +130,23 @@ int main(int argc, char *argv[]) {
     }
     buffer_recv[bytes] = '\0';
 
-    // Puede venir “ERROR:” si el servidor está cerrándose
+    // Puede venir "ERROR:" si el servidor está cerrándose
     if (strncmp(buffer_recv, "ERROR:", 6) == 0) {
         printf("%s", buffer_recv);
         close(sockfd);
         return 1;
     }
+
+    // Configurar timeout de recepción (5 segundos) DESPUÉS de recibir estado inicial
+    struct timeval tv;
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv) < 0) {
+        perror("setsockopt timeout");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
     // Podría llegar "STATE:...|...|...\n¡Acierto!" o "STATE:…\n" si no hay extra
     // En cualquier caso, procesamos la línea STATE y descartamos el resto por ahora
     if (strncmp(buffer_recv, "STATE:", 6) == 0) {
@@ -177,7 +188,7 @@ int main(int argc, char *argv[]) {
             bytes = recv(sockfd, buffer_recv, sizeof(buffer_recv) - 1, 0);
             if (bytes > 0) {
                 buffer_recv[bytes] = '\0';
-                printf("%s", buffer_recv);  // “BYE\n”
+                printf("%s", buffer_recv);  // "BYE\n"
             }
             break;
         }
@@ -197,7 +208,11 @@ int main(int argc, char *argv[]) {
         char cmd_with_nl[MAX_INPUT + 2];
         snprintf(cmd_with_nl, sizeof(cmd_with_nl), "%s\n", buffer_send);
         if (send(sockfd, cmd_with_nl, strlen(cmd_with_nl), 0) < 0) {
-            perror("send");
+            if (errno == EPIPE) {
+                printf("\nSe perdió la conexión con el servidor. El juego se cerrará.\n");
+            } else {
+                perror("send");
+            }
             break;
         }
 
@@ -205,18 +220,33 @@ int main(int argc, char *argv[]) {
         memset(buffer_recv, 0, sizeof(buffer_recv));
         bytes = recv(sockfd, buffer_recv, sizeof(buffer_recv) - 1, 0);
         if (bytes <= 0) {
-            printf("El servidor se desconectó inesperadamente.\n");
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                printf("\nTimeout esperando respuesta del servidor. El servidor podría estar caído.\n");
+                printf("Se perdió la conexión con el servidor. El juego se cerrará.\n");
+            } else {
+                printf("\nEl servidor se desconectó inesperadamente.\n");
+                printf("Se perdió la conexión con el servidor. El juego se cerrará.\n");
+            }
             break;
         }
         buffer_recv[bytes] = '\0';
 
-        // Si viene “ERROR:” (raro en el juego normal), mostramos y salimos
+        // Si viene "ERROR:" (raro en el juego normal), mostramos y salimos
         if (strncmp(buffer_recv, "ERROR:", 6) == 0) {
-            printf("%s", buffer_recv);
-            break;
+            if (strncmp(buffer_recv, "ERROR:Letra ya usada", 19) == 0) {
+                printf("\nEsa letra ya fue usada. Intenta con otra.\n");
+                continue;
+            } else if (strncmp(buffer_recv, "ERROR:No quedan intentos", 23) == 0) {
+                printf("\nNo te quedan más intentos. Espera a que termine el juego.\n");
+                continue;
+            } else {
+                printf("\n%s ", buffer_recv);
+                printf("Se perdió la conexión con el servidor. El juego se cerrará.\n");
+                break;
+            }
         }
 
-        // 1) Separar en líneas: “STATE:…|…|…”  posible “¡Acierto!”/“Letra incorrecta” y luego “GAMEOVER:…”
+        // 1) Separar en líneas: "STATE:..." posible "¡Acierto!"/¡Letra incorrecta" y luego "GAMEOVER:..."
         //    Cada línea termina en '\n'. Podemos tokenizar por "\n".
         char *line = NULL;
         char *rest = buffer_recv;
@@ -265,16 +295,24 @@ int main(int argc, char *argv[]) {
             // ====== Preguntar si quiere jugar otra ======
             int jugar_otra = preguntar_replay();
             if (jugar_otra) {
-                send(sockfd, "PLAY\n", 5, 0);
+                if (send(sockfd, "PLAY\n", 5, 0) < 0) {
+                    if (errno == EPIPE) {
+                        printf("\nSe perdió la conexión con el servidor. El juego se cerrará.\n");
+                    } else {
+                        perror("send");
+                    }
+                    break;
+                }
                 // Esperar nuevo STATE inicial
                 memset(buffer_recv, 0, sizeof(buffer_recv));
                 bytes = recv(sockfd, buffer_recv, sizeof(buffer_recv) - 1, 0);
                 if (bytes <= 0) {
-                    printf("Servidor se desconectó al iniciar nueva partida.\n");
+                    printf("\nEl servidor se desconectó al iniciar nueva partida.\n");
+                    printf("Se perdió la conexión con el servidor. El juego se cerrará.\n");
                     break;
                 }
                 buffer_recv[bytes] = '\0';
-                // El buffer debe contener “STATE:…”; lo procesamos tal cual
+                // El buffer debe contener "STATE:..."; lo procesamos tal cual
                 if (strncmp(buffer_recv, "STATE:", 6) == 0) {
                     procesar_estado(buffer_recv);
                 }
@@ -285,7 +323,7 @@ int main(int argc, char *argv[]) {
                 bytes = recv(sockfd, buffer_recv, sizeof(buffer_recv) - 1, 0);
                 if (bytes > 0) {
                     buffer_recv[bytes] = '\0';
-                    printf("%s", buffer_recv);  // “BYE\n”
+                    printf("%s", buffer_recv);  // "BYE\n"
                 }
                 break;
             }

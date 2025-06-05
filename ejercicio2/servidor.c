@@ -10,7 +10,7 @@
  * - Maneja SIGINT para cierre limpio: deja de aceptar, espera a que todos los clientes
  *   se desconecten y luego cierra.
  * - Usa SO_REUSEADDR para poder reiniciar inmediatamente en el mismo puerto.
- * - Permite “jugar otra partida” (PLAY) o “salir” (QUIT) tras finalizar una partida.
+ * - Permite "jugar otra partida" (PLAY) o "salir" (QUIT) tras finalizar una partida.
  * - Acumula y envía siempre la lista de letras usadas para que el cliente la muestre.
  * - Si el cliente se desconecta o envía QUIT durante la partida, la cuenta como perdida.
  *
@@ -54,13 +54,42 @@ int siguiente_id = 0;
 
 // Guardamos los pthread_t de hilos activos para monitoreo
 pthread_t lista_hilos[MAX_CLIENTES];
+pthread_t hilo_refresco;  // Guardamos el ID del hilo de refresco
+
+// Array para guardar los sockets de clientes activos
+int sockets_clientes[MAX_CLIENTES];
+pthread_mutex_t mutex_sockets = PTHREAD_MUTEX_INITIALIZER;
+
+// Socket del servidor (global para poder cerrarlo en el manejador de señales)
+int server_socket_fd = -1;
 
 // Flag para indicarle al servidor que debe cerrar
 volatile sig_atomic_t shutdown_server = 0;
 
 // ===================== Manejador SIGINT =======================
 void handle_sigint(int sig) {
+    printf("\nRecibido SIGINT (Ctrl+C). Iniciando cierre del servidor...\n");
+    fflush(stdout);
     shutdown_server = 1;
+    
+    // Notificar a todos los clientes activos
+    pthread_mutex_lock(&mutex_sockets);
+    for (int i = 0; i < MAX_CLIENTES; i++) {
+        if (sockets_clientes[i] > 0) {
+            send(sockets_clientes[i], "ERROR:Server shutting down\n", 26, 0);
+            close(sockets_clientes[i]);  // Cerrar socket del cliente
+            sockets_clientes[i] = 0;
+        }
+    }
+    pthread_mutex_unlock(&mutex_sockets);
+
+    // Cerrar el socket del servidor para interrumpir accept()
+    if (server_socket_fd != -1) {
+        close(server_socket_fd);
+    }
+
+    // Cancelar el hilo de refresco
+    pthread_cancel(hilo_refresco);
 }
 
 // ======================= Palabras Ahorcado =====================
@@ -96,7 +125,7 @@ void enviar_estado(int client_fd,
                      "STATE:%s|%d|%s\n",
                      estado_palabra, intentos_restantes, letras_usadas);
 
-    // Segunda línea: mensaje extra (WIN/LOSE o “¡Acierto!” / “Letra incorrecta”)
+    // Segunda línea: mensaje extra (WIN/LOSE o "¡Acierto!" / "Letra incorrecta")
     if (mensaje_extra && strlen(mensaje_extra) > 0) {
         snprintf(buffer + n, sizeof(buffer) - n, "%s\n", mensaje_extra);
     }
@@ -107,8 +136,13 @@ void enviar_estado(int client_fd,
 
 // ========== Función de refresco periódico (thread aparte) ==========
 void *refrescar_estado(void *arg) {
+    // Configurar el hilo para que pueda ser cancelado inmediatamente
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+    
     while (!shutdown_server) {
         sleep(INTERVALO_REFRESCO);
+        
+        if (shutdown_server) break;  // Verificar de nuevo después del sleep
 
         pthread_mutex_lock(&mutex_contador);
         int act = clientes_activos;
@@ -136,6 +170,8 @@ void *refrescar_estado(void *arg) {
         }
         printf("[REFRESCO] =========================================\n");
     }
+    
+    printf("[Refresco] Hilo de refresco finalizado.\n");
     pthread_exit(NULL);
     return NULL;
 }
@@ -152,6 +188,16 @@ void *atender_cliente(void *arg) {
     int id = args->id_cliente;
     free(arg);
 
+    // Registrar socket del cliente
+    pthread_mutex_lock(&mutex_sockets);
+    for (int i = 0; i < MAX_CLIENTES; i++) {
+        if (sockets_clientes[i] == 0) {
+            sockets_clientes[i] = client_fd;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&mutex_sockets);
+
     printf("[Thread %d] Cliente conectado. Clientes activos: %d\n",
            id, clientes_activos);
 
@@ -159,6 +205,11 @@ void *atender_cliente(void *arg) {
     int bytes;
 
     while (!shutdown_server) {
+        // Si el servidor está cerrando, salimos del bucle
+        if (shutdown_server) {
+            break;
+        }
+
         // ================ Iniciar una partida =================
         int idx = palabra_aleatoria();
         char palabra_real[MAX_PALABRA];
@@ -222,13 +273,23 @@ void *atender_cliente(void *arg) {
                 char letra = buffer_recv[4];
                 int acierto = 0;
 
+                // Verificar si la letra ya fue usada
+                if (strchr(letras_usadas, letra) != NULL) {
+                    send(client_fd, "ERROR:Letra ya usada\n", 20, 0);
+                    continue;
+                }
+
+                // Verificar si quedan intentos
+                if (intentos_restantes <= 0) {
+                    send(client_fd, "ERROR:No quedan intentos\n", 24, 0);
+                    continue;
+                }
+
                 // *** 1) Añadir la letra a 'letras_usadas' si no estaba ya ***
-                if (strchr(letras_usadas, letra) == NULL) {
-                    int l = strlen(letras_usadas);
-                    if (l < (int)sizeof(letras_usadas) - 2) {
-                        letras_usadas[l] = letra;
-                        letras_usadas[l + 1] = '\0';
-                    }
+                int l = strlen(letras_usadas);
+                if (l < (int)sizeof(letras_usadas) - 2) {
+                    letras_usadas[l] = letra;
+                    letras_usadas[l + 1] = '\0';
                 }
 
                 // 2) Actualizar todas las ocurrencias en 'estado'
@@ -314,7 +375,7 @@ void *atender_cliente(void *arg) {
             printf("[Thread %d] Cliente eligió PLAY para nueva partida.\n", id);
             continue;
         } else {
-            // Cualquier otra cosa (p.ej. “QUIT”), cuenta como pérdida y se cierra
+            // Cualquier otra cosa (p.ej. "QUIT"), cuenta como pérdida y se cierra
             send(client_fd, "BYE\n", 4, 0);
             printf("[Thread %d] Cliente eligió QUIT tras GAMEOVER. Cuenta como pérdida y cierra hilo.\n", id);
             pthread_mutex_lock(&mutex_contador);
@@ -325,6 +386,16 @@ void *atender_cliente(void *arg) {
     }
 
     // ================ Cerrar conexión y terminar hilo ================
+    // Eliminar socket del cliente
+    pthread_mutex_lock(&mutex_sockets);
+    for (int i = 0; i < MAX_CLIENTES; i++) {
+        if (sockets_clientes[i] == client_fd) {
+            sockets_clientes[i] = 0;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&mutex_sockets);
+
     close(client_fd);
 
     pthread_mutex_lock(&mutex_contador);
@@ -339,19 +410,36 @@ void *atender_cliente(void *arg) {
 
 // ========================== main() ============================
 int main() {
-    int server_fd, new_socket;
+    int new_socket;
     struct sockaddr_in address;
     socklen_t addrlen = sizeof(address);
 
-    // Capturar SIGINT
-    signal(SIGINT, handle_sigint);
+    // Inicializar array de sockets
+    memset(sockets_clientes, 0, sizeof(sockets_clientes));
+
+    // Configurar manejadores de señales
+    struct sigaction sa;
+    sa.sa_handler = handle_sigint;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("Error configurando manejador SIGINT");
+        exit(EXIT_FAILURE);
+    }
+
+    // También manejar SIGTERM
+    if (sigaction(SIGTERM, &sa, NULL) == -1) {
+        perror("Error configurando manejador SIGTERM");
+        exit(EXIT_FAILURE);
+    }
 
     srand(time(NULL));
 
     printf("===== INICIO DEL SERVIDOR DE AHORCADO =====\n");
 
     // ---------- 1) Crear socket ----------
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+    if ((server_socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket");
         exit(EXIT_FAILURE);
     }
@@ -359,9 +447,9 @@ int main() {
 
     // ---------- 2) Configurar SO_REUSEADDR ----------
     int opt = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+    if (setsockopt(server_socket_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
         perror("setsockopt SO_REUSEADDR");
-        close(server_fd);
+        close(server_socket_fd);
         exit(EXIT_FAILURE);
     }
     printf("SO_REUSEADDR configurado.\n");
@@ -372,36 +460,38 @@ int main() {
     address.sin_port = htons(PUERTO);
 
     // ---------- 4) bind() ----------
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+    if (bind(server_socket_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("bind");
-        close(server_fd);
+        close(server_socket_fd);
         exit(EXIT_FAILURE);
     }
     printf("Bind exitoso en puerto %d.\n", PUERTO);
 
     // ---------- 5) listen() ----------
-    if (listen(server_fd, 10) < 0) {
+    if (listen(server_socket_fd, 10) < 0) {
         perror("listen");
-        close(server_fd);
+        close(server_socket_fd);
         exit(EXIT_FAILURE);
     }
     printf("Servidor escuchando (listen) en puerto %d.\n", PUERTO);
     printf("Máximo de clientes concurrentes: %d\n\n", MAX_CLIENTES);
 
     // ---------- 6) Lanzar thread de refresco periódico ----------
-    pthread_t hilo_refresco;
     if (pthread_create(&hilo_refresco, NULL, refrescar_estado, NULL) != 0) {
         perror("pthread_create hilo_refresco");
-        close(server_fd);
+        close(server_socket_fd);
         exit(EXIT_FAILURE);
     }
-    pthread_detach(hilo_refresco);
 
     // ---------- 7) Bucle principal de aceptación ----------
     while (!shutdown_server) {
-        new_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen);
+        // Pequeña pausa para ser más sensible a señales
+        usleep(100000);  // 100ms
+
+        new_socket = accept(server_socket_fd, (struct sockaddr *)&address, &addrlen);
         if (new_socket < 0) {
             if (shutdown_server) break;
+            if (errno == EINTR) continue;  // Interrumpido por señal
             perror("accept");
             continue;
         }
@@ -457,17 +547,20 @@ int main() {
 
     // ---------- 8) Cierre limpio ----------
     printf("\n[Main] SIGINT recibido: iniciando cierre limpio.\n");
-    close(server_fd);
-
+    
     // Esperar a que todos los clientes (hilos) finalicen
     while (1) {
         pthread_mutex_lock(&mutex_contador);
         int rem = clientes_activos;
         pthread_mutex_unlock(&mutex_contador);
         if (rem == 0) break;
+        printf("[Main] Esperando que finalicen %d clientes...\n", rem);
         sleep(1);
     }
 
-    printf("[Main] Todos los clientes se han desconectado. Servidor finalizado.\n");
+    // Esperar a que el hilo de refresco termine
+    pthread_join(hilo_refresco, NULL);
+
+    printf("[Main] Todos los hilos han finalizado. Servidor cerrado.\n");
     return 0;
 }
