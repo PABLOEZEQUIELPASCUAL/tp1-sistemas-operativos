@@ -23,7 +23,7 @@
 #define SEM_CLASIFICAR 3
 #define NUM_HIJOS 4
 
-#define DEBUG_SLEEP() //sleep(1) // Para simular procesamiento, se puede comentar al ejecutar tambien.
+#define DEBUG_SLEEP() sleep(6) // Para simular procesamiento, se puede comentar al ejecutar tambien.
 
 volatile sig_atomic_t terminar = 0; // Flag global para señal. 
                                     //volatile le dice al compilador que la variable puede cambiar en cualquier momento
