@@ -24,7 +24,7 @@
 #define SEM_CLASIFICAR 3
 #define NUM_HIJOS 4
 
-#define DEBUG_SLEEP() sleep(6) // Para simular procesamiento, se puede comentar al ejecutar tambien.
+#define DEBUG_SLEEP() sleep(1) // Para simular procesamiento, se puede comentar al ejecutar tambien.
 
 volatile sig_atomic_t terminar = 0; // Flag global para señal. 
                                     //volatile le dice al compilador que la variable puede cambiar en cualquier momento
@@ -61,7 +61,6 @@ typedef struct
 // Variables globales necesarias para señales
 int shmid, semid;
 DatosCompartidos* datos;
-pid_t pid_padre;
 
 // Funciones auxiliares: P, V, crear memoria, etc.
 void P(int semid, int semnum) 
@@ -335,6 +334,7 @@ void encriptarFormulario(DatosCompartidos* datos, int semid)
         char dniTexto[20];
         snprintf(dniTexto, sizeof(dniTexto), "%ld", f->dni);
         cifradoCesar(dniTexto, 3);
+        f->dni = strtol(dniTexto, NULL, 10); // Convertimos de vuelta a long int y guardamos
 
         printf("Encriptar: Formulario %d encriptado.\n", f->id);
         
@@ -442,7 +442,6 @@ void crear_hijos(int shmid, int semid, pid_t pids[])
 int main() 
 {
     int shmid;
-    pid_padre = getpid();
     pid_t pids[NUM_HIJOS];
      
     
