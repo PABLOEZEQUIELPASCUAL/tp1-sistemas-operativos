@@ -1,0 +1,12 @@
+1,12345678,Juan,Pérez,15/08/1990,1144455667,Quiero hacer un reclamo por servicio
+2,87654321,Ana,Gómez,10/07/1985,1155667788,Solicito un pedido de información
+3,55555555,Luis,Martínez,02/02/1975,1166778899,Tengo una consulta sobre mi cuenta
+4,44444444,María,Rodríguez,22/12/2000,1177788990,Esto es un mensaje genérico sin palabra clave
+5,99887766,Pedro,Suárez,08/11/1980,1188990011,Consulta sobre el pedido anterior
+6,66778899,Sofía,López,21/09/1999,1199001122,Reclamo por error en la entrega
+7,11112222,Diego,Hernández,03/03/1970,1100112233,Quiero hacer un reclamo urgente
+8,22223333,Mariana,Ramos,14/05/1988,1122233445,Necesito un pedido de repuestos
+9,33334444,Florencia,Castro,29/02/1992,1133344556,Tengo una consulta sobre facturación
+10,44445555,Martín,Ortiz,18/08/1978,1144455667,Este es otro mensaje sin palabras clave
+11,55556666,Virginia,Flores,27/12/1983,1155566778,Quiero hacer un reclamo y un pedido
+12,66667777,Ignacio,Sosa,05/06/1976,1166677889,Tengo varias consultas y un reclamo
