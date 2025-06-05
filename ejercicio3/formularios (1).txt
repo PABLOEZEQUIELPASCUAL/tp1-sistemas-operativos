@@ -1,0 +1,54 @@
+12345678 Juan Perez 1990-05-21 1122334455 reclamo por mal servicio
+87654321 Ana Gomez 1985-10-03 1144556677 consulta sobre facturacion
+23456789 Pedro Diaz 1978-12-14 1133221100 solicito informacion sobre producto
+34567890 Maria Lopez 2000-06-09 1166778899 duda sobre garantia
+45678901 Lucas Martinez 1995-04-02 1199887766 queja por atencion al cliente
+11223344 Pablo Ruiz 1988-01-01 1177889900 pedido urgente de materiales
+22334455 Carla Fernandez 1991-03-23 1155667788 pregunta frecuente sobre uso
+33445566 Miguel Torres 1980-07-17 1188990011 denuncia por incumplimiento
+44556677 Lucia Suarez 1993-11-11 1133445566 reclamo por errores en la boleta
+55667788 Tomas Nunez 2001-09-30 1144778899 consulta tecnica de instalacion
+66778899 Florencia Paredes 1989-08-08 1155990077 solicitud de cambio de producto
+77889900 Andres Gil 1996-12-25 1100112233 queja por maltrato
+88990011 Sofia Campos 1975-02-14 1177334455 duda sobre funcionamiento
+99001122 Nicolas Ortega 1983-06-18 1122113344 requerimiento de soporte urgente
+11022033 Mariano Torres 1990-04-04 texto sin numero de telefono y mal formato
+12023044 Clara Gutierrez 1994-10-10 1133556677 consulta
+13024055 - - - - descripcion invalida sin datos
+14025066 Gabriela Mendez 1988-05-05 1199223344 tengo una consulta breve
+15026077 Raul Vega 1982-03-30 1177885533 deseo hacer un reclamo por cobro indebido
+16027088 Camila Rojas 1991-08-20 1144667788 me quejo del trato recibido
+17028099 Ignacio Pena 1979-12-12 1188554477 quisiera solicitar asistencia
+18029100 Fernanda Alvarez 1986-07-07 1199886655 duda frecuente
+19030110 Javier Molina 2000-02-29 1133221100 pedido de nuevo equipo
+20031120 Laura Herrera 1995-09-15 1122446688 pregunta sobre garantia extendida
+21032130 Kevin Arce 1997-06-06 1100998877 reporte por problemas tecnicos
+22033140 Paula Ayala 1992-01-01 1155443322 quiero levantar una queja formal
+23034150 Mateo Cabrera 1993-03-03 1177332211 solicitud de reembolso
+24035160 Rosario Castro 1984-12-22 1122110088 necesito soporte
+25036170 Alan Paz 1981-11-11 1166447733 consulta por upgrade
+26037180 Catalina Soto 1998-05-05 1199001122 dudas frecuentes sobre instalacion
+27038190 Rodrigo Moreno 1987-07-17 1188009900 reclamo de factura duplicada
+28039200 Lucia Acosta 1976-04-04 1177119922 pedido urgente por error de sistema
+29040210 Julian Diaz 1999-09-09 1100223344 pregunta tecnica
+30041220 FALTA CAMPOS MAL
+31042230 Emilia Luna 2002-06-06 1199448822 duda
+32043240 Dante Velez 1983-03-03 1155772211 este texto no tiene palabras clave
+33044250 Agustina Silva 1990-01-20 1199776655 quisiera hablar con alguien
+34045260 Franco Rinaldi 1977-08-08 1188997766 necesito ayuda urgente
+35046270 Josefina Lopez 1985-11-11 1144332200 reclamo mal redactado pero entendible
+36047280 Marcelo Aguirre 1974-02-14 1199112233 otro asunto no categorizado
+37048290 Sol Benitez 1991-03-21 1122117788 solicito revision
+38049300 Bruno Marquez 2003-10-10 1100332211 necesito atencion urgente
+39050310 Valentina Cabrera 2001-07-07 1199667744 consulta tecnica
+40051320 Octavio Molina 1996-05-25 1188223344 duda
+41052330 Renata Flores 1994-12-12 1155112233 no entra en ninguna categoria
+42053340 Emiliano Sanchez 1987-01-30 1144221100 pregunta por actualizaciones
+43054350 Milagros Romero 1979-09-09 1133442288 reclamo comun
+44055360 Axel Vargas 2002-02-20 1122667788 duda importante
+45056370 Clara Navarro 1980-08-18 1177885566 tema desconocido
+46057380 Samuel Herrera 1986-06-06 1166994455 solicito que revisen mi caso
+47058390 Jazmin Ferreira 1989-03-03 1133998855 queja tecnica
+48059400 Federico Vidal 1993-04-04 1199007722 ayuda
+49060410 Brenda Reyes 2004-10-10 1188443322 informacion adicional requerida
+50061420 Alan Gomez 1982-12-12 1199775544 quiero hacer una denuncia
