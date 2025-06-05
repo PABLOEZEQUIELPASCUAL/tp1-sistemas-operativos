@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <ctype.h>
+
 // Constantes y estructuras
 #define MAX_FORMULARIOS 100
 #define SHM_KEY 1234 //Identificador unico para memoria compartida. Usado por shmget
@@ -60,28 +61,7 @@ typedef struct
 // Variables globales necesarias para señales
 int shmid, semid;
 DatosCompartidos* datos;
-
-// Declaraciones prototipo funciones
-void cargarFormulario(DatosCompartidos* datos, int semid);
-void validarFormulario(DatosCompartidos* datos, int semid);
-void encriptarFormulario(DatosCompartidos* datos, int semid);
-void clasificarFormulario(DatosCompartidos* datos, int semid);
-void cifradoCesar(char* texto, int desplazamiento);
-
-void P(int semid, int semnum);
-void V(int semid, int semnum);
-
-DatosCompartidos* inicializar_memoria_compartida(int* shmid);
-void liberar_memoria(int shmid, DatosCompartidos* datos);
-
-int crear_semaforos();
-void liberar_semaforos(int semid);
-
-void crear_hijos(int shmid, int semid, pid_t pids[]);
-
-void finalizar();
-void handler_SIGINT(int sig);
-
+pid_t pid_padre;
 
 // Funciones auxiliares: P, V, crear memoria, etc.
 void P(int semid, int semnum) 
@@ -110,6 +90,7 @@ void handler_SIGINT(int sig)
     terminar = 1;
 }
 
+// Validaciones
 int esSoloLetras(char* texto) 
 {
     for (int i = 0; texto[i] != '\0'; i++) 
@@ -225,7 +206,7 @@ void cargarFormulario(DatosCompartidos* datos, int semid)
              else 
                 perror("Error al leer el archivo");// Otro error en la lectura
 
-            break;
+            break; // Salimos del bucle si no hay más líneas
         }
 
         Formulario f;
@@ -280,7 +261,6 @@ void cargarFormulario(DatosCompartidos* datos, int semid)
         P(semid, SEM_CARGAR); // Espera hasta que se libere el semaforo
     }
 
-    printf("cargarFormulario finalizó.\n");
     exit(EXIT_SUCCESS);
 }
 
@@ -297,9 +277,6 @@ void validarFormulario(DatosCompartidos* datos, int semid)
             printf("validarFormulario finalizó.\n");
             exit(EXIT_SUCCESS);
         }
-        
-        if (esperando_final) 
-            continue;// Ya procesé el último, solo espero la orden del padre
 
         int idx = datos->cantidad - 1;
         Formulario* f = &datos->formularios[idx]; //Nos posicionamos en el nro de formulario que corresponde.
@@ -324,11 +301,14 @@ void validarFormulario(DatosCompartidos* datos, int semid)
         
         V(semid, SEM_ENCRIPTAR);  // Paso al siguiente proceso
 
-        if (datos->ultimo && idx + 1 == datos->cantidad) 
+        if (datos->ultimo && idx + 1 == datos->cantidad) // Verificamos si es el último formulario
             esperando_final = 1;
 
+        if (esperando_final) 
+            P(semid, SEM_VALIDAR);// Ya procesé el último, solo espero la orden del padre
+
     }
-    printf("validarFormulario finalizó.\n");
+
     exit(EXIT_SUCCESS);
 }
 
@@ -344,11 +324,7 @@ void encriptarFormulario(DatosCompartidos* datos, int semid)
             printf("encriptarFormulario finalizó.\n");
             exit(EXIT_SUCCESS);
         }
-
-        if (esperando_final) 
-            continue;// Ya procesé el último, solo espero la orden del padre
         
-
         int idx = datos->cantidad - 1;
         Formulario* f = &datos->formularios[idx];
 
@@ -366,11 +342,13 @@ void encriptarFormulario(DatosCompartidos* datos, int semid)
 
         V(semid, SEM_CLASIFICAR);
 
-        if (datos->ultimo && idx + 1 == datos->cantidad) 
+        if (datos->ultimo && idx + 1 == datos->cantidad) // Verificamos si es el último formulario
             esperando_final = 1;
+
+        if (esperando_final) 
+            P(semid, SEM_ENCRIPTAR);// Ya procesé el último, solo espero la orden del padre
     }
 
-    printf("encriptarFormulario finalizó.\n");
     exit(EXIT_SUCCESS);
 }
 
@@ -386,9 +364,6 @@ void clasificarFormulario(DatosCompartidos* datos, int semid)
             printf("clasificarFormulario finalizó.\n");
             exit(EXIT_SUCCESS);
         }
-
-        if (esperando_final) 
-            continue;// Ya procesé el último, solo espero la orden del padre
 
         int idx = datos->cantidad - 1;
         Formulario* f = &datos->formularios[idx];
@@ -411,11 +386,13 @@ void clasificarFormulario(DatosCompartidos* datos, int semid)
 
         V(semid, SEM_CARGAR);  // Habilita al próximo ciclo de carga
 
-        if (datos->ultimo && idx + 1 == datos->cantidad) 
+        if (datos->ultimo && idx + 1 == datos->cantidad) // Verificamos si es el último formulario
             esperando_final = 1;
+
+         if (esperando_final) 
+            P(semid, SEM_CLASIFICAR);// Ya procesé el último, solo espero la orden del padre
     }
 
-    printf("clasificarFormulario finalizó.\n");
     exit(EXIT_SUCCESS);
 }
 
@@ -465,6 +442,7 @@ void crear_hijos(int shmid, int semid, pid_t pids[])
 int main() 
 {
     int shmid;
+    pid_padre = getpid();
     pid_t pids[NUM_HIJOS];
      
     
@@ -492,18 +470,25 @@ int main()
         pause();
     }
 
-    printf("\nSeñal recibida. Indicando a hijos finalizar...\n");
-
     // Indicar a hijos que terminen (flag en memoria compartida) y desbloquear
     finalizar();
+
+    printf("\n\033[1;33mSeñal recibida. Indicando a hijos finalizar...\033[0m\n");
 
     // Esperar que hijos terminen
     for (int i = 0; i < NUM_HIJOS; i++) 
     {
         waitpid(pids[i], NULL, 0);
+        switch(i) 
+        {
+            case 0: printf("Cargador (PID %d) finalizó.\n", pids[i]); break;
+            case 1: printf("Validador (PID %d) finalizó.\n", pids[i]); break;
+            case 2: printf("Encriptador (PID %d) finalizó.\n", pids[i]); break;
+            case 3: printf("Clasificador (PID %d) finalizó.\n", pids[i]); break;
+        }
     }
 
-    printf("Todos los hijos finalizaron.\n\n");
+    printf("\033[1;33mTodos los hijos finalizaron.\033[0m\n\n");
 
     // Actualizar contadores finales
     int reclamos=0, pedidos=0, consultas=0, otros=0, total=0;
@@ -533,6 +518,8 @@ int main()
     printf("Consultas: %d\n", datos->cantidadConsultas);
     printf("Otros: %d\n", datos->cantidadOtros);
 
+    //Puesto unicamente con la intencion de revisar el resultado final de los formularios procesados
+    //para asi verificar que todo funcione correctamente.
     FILE* salida = fopen("procesados.txt", "w");
     if (salida) 
     {
