@@ -364,20 +364,28 @@ void *atender_cliente(void *arg) {
         }
         buffer_recv[bytes] = '\0';
 
-        // Eliminar '\n'
+        // Eliminar '\n' y espacios
         size_t glen = strlen(buffer_recv);
-        if (glen > 0 && buffer_recv[glen - 1] == '\n') {
+        while (glen > 0 && (buffer_recv[glen - 1] == '\n' || buffer_recv[glen - 1] == '\r' || buffer_recv[glen - 1] == ' ')) {
             buffer_recv[glen - 1] = '\0';
+            glen--;
         }
 
         if (strcmp(buffer_recv, "PLAY") == 0) {
             // Jugar otra: volvemos al principio del while principal
             printf("[Thread %d] Cliente eligió PLAY para nueva partida.\n", id);
             continue;
-        } else {
-            // Cualquier otra cosa (p.ej. "QUIT"), cuenta como pérdida y se cierra
+        } else if (strcmp(buffer_recv, "QUIT") == 0) {
             send(client_fd, "BYE\n", 4, 0);
             printf("[Thread %d] Cliente eligió QUIT tras GAMEOVER. Cuenta como pérdida y cierra hilo.\n", id);
+            pthread_mutex_lock(&mutex_contador);
+            total_partidas_perdidas++;
+            pthread_mutex_unlock(&mutex_contador);
+            break;
+        } else {
+            // Cualquier otra cosa, cerrar igual
+            send(client_fd, "BYE\n", 4, 0);
+            printf("[Thread %d] Respuesta inesperada tras GAMEOVER ('%s'). Cierra hilo.\n", id, buffer_recv);
             pthread_mutex_lock(&mutex_contador);
             total_partidas_perdidas++;
             pthread_mutex_unlock(&mutex_contador);
@@ -485,10 +493,41 @@ int main() {
 
     // ---------- 7) Bucle principal de aceptación ----------
     while (!shutdown_server) {
-        // Pequeña pausa para ser más sensible a señales
-        usleep(100000);  // 100ms
+        // Usar select() para esperar conexiones con timeout
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(server_socket_fd, &readfds);
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 500000; // 0.5 segundos
 
-        new_socket = accept(server_socket_fd, (struct sockaddr *)&address, &addrlen);
+        int sel = select(server_socket_fd + 1, &readfds, NULL, NULL, &tv);
+        if (sel < 0) {
+            if (errno == EINTR) continue; // Interrumpido por señal
+            perror("select");
+            break;
+        }
+
+        // Antes de aceptar, revisar si hay que cerrar por falta de clientes
+        pthread_mutex_lock(&mutex_contador);
+        if (clientes_activos == 0 && siguiente_id > 0) {
+            pthread_mutex_unlock(&mutex_contador);
+            printf("\n[Main] No quedan clientes activos. Cerrando servidor automáticamente.\n");
+            shutdown_server = 1;
+            break;
+        }
+        pthread_mutex_unlock(&mutex_contador);
+
+        if (sel == 0) {
+            // Timeout, volver a chequear
+            continue;
+        }
+
+        if (!FD_ISSET(server_socket_fd, &readfds)) {
+            continue;
+        }
+
+        int new_socket = accept(server_socket_fd, (struct sockaddr *)&address, &addrlen);
         if (new_socket < 0) {
             if (shutdown_server) break;
             if (errno == EINTR) continue;  // Interrumpido por señal
@@ -546,8 +585,7 @@ int main() {
     }
 
     // ---------- 8) Cierre limpio ----------
-    printf("\n[Main] SIGINT recibido: iniciando cierre limpio.\n");
-    
+    printf("\n[Main] Cierre limpio iniciado. Esperando que finalicen los clientes...\n");
     // Esperar a que todos los clientes (hilos) finalicen
     while (1) {
         pthread_mutex_lock(&mutex_contador);
